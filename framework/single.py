@@ -59,7 +59,7 @@ def get_per_token_logps(logits, input_ids, clamp_min=-5.0, clamp_max=0.0):
     
     return per_token_logps
 
-def GRPO_step(model, ref_model, tokenizer, batch, beta=0.001, clip_param=0.2):
+def GRPO_step(model, tokenizer, batch, beta=0.001, clip_param=0.2):
     """GRPO训练步骤"""
     print("开始grpo loss计算")
     prompt_length = batch['plen']
@@ -76,10 +76,10 @@ def GRPO_step(model, ref_model, tokenizer, batch, beta=0.001, clip_param=0.2):
     per_token_logps = per_token_logps[:, prompt_length-1:]
     
     # 参考模型的log概率
-    ref_per_token_logps = batch['refs']
+    
     
     # KL散度
-    per_token_kl = torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1
+    
     completion_mask = (inputs[:, prompt_length:] != tokenizer.pad_token_id).int()
     
     # GRPO损失
@@ -130,14 +130,10 @@ class GRPOTrainer:
             raise
 
         # 参考模型（用于GRPO，不需要梯度）
-        self.ref_reasoning = copy.deepcopy(self.base_reasoning_model).eval().to(self.reasoning_device)
-        self.ref_code = copy.deepcopy(self.base_code_model).eval().to(self.code_device)
+        
 
         # 冻结参考模型参数
-        for param in self.ref_reasoning.parameters():
-            param.requires_grad = False
-        for param in self.ref_code.parameters():
-            param.requires_grad = False
+       
 
         # 优化器
         self.reasoning_optimizer = optim.AdamW(self.reasoning_agent.model.parameters(), lr=1e-6, eps=1e-8)
@@ -145,19 +141,6 @@ class GRPOTrainer:
 
     
 
-    def get_ref_logps(self, ref_model, tokenizer, sequences, prompt_length, device):
-        """获取参考模型的log概率"""
-        ref_model.eval()
-        
-        with torch.no_grad():
-            logits = ref_model(sequences).logits
-            logits = logits[:, :-1, :]
-            input_ids = sequences[:, 1:]
-            
-            ref_per_token_logps = get_per_token_logps(logits, input_ids)
-            ref_per_token_logps = ref_per_token_logps[:, prompt_length-1:]
-            
-        return ref_per_token_logps
 
     def sample_reasonings(self, prompt, n_samples, max_tokens=1024):
         """采样推理文本"""
@@ -199,7 +182,7 @@ class GRPOTrainer:
 
     
         
-    def run_step(self, history, truth, n_reasoning=3, n_code=3, beta=0):
+    def run_step(self, history, truth, n_reasoning=8, n_code=6, beta=0):
         """运行一步训练"""
         logger.info("Starting training step")
     
@@ -226,9 +209,9 @@ class GRPOTrainer:
             reasoning_code_map = []
             best_reasoning_result = None
     
-            if any("</answer>" in text for text in reasoning_texts):
+            if any("boxed" in text for text in reasoning_texts):
                 logger.info("Answer found in reasoning texts, stopping")
-                return 0, 0, "</answer>"
+                return torch.tensor(0.0, device=self.reasoning_device, requires_grad=True), torch.tensor(0.0, device=self.code_device, requires_grad=True), "boxed"
     
             # 2. 对每个推理生成代码样本
             logger.debug(f"Processing {len(reasoning_texts)} reasoning texts")
@@ -269,10 +252,7 @@ class GRPOTrainer:
                         rewards_code = (rewards_code - rewards_code.mean()) / (rewards_code.std() + 1e-8)
     
                         # 获取参考模型的log概率
-                        ref_logps = self.get_ref_logps(
-                            self.ref_code, self.code_agent.tokenizer,
-                            code_sequences, code_prompt_tokens, self.code_device
-                        )
+                        
     
                         # 构建批次数据
                         if rewards_code.numel() > 0 and not torch.allclose(rewards_code, rewards_code[0], atol=1e-6):
@@ -281,13 +261,11 @@ class GRPOTrainer:
                                 'plen': code_prompt_tokens,
                                 'inputs': code_sequences,
                                 'rewards': rewards_code,
-                                'refs': ref_logps,
                                 'gen_logps': code_gen_logps
                             }
                             code_batches.append(batch)
     
-                        # 清理ref_logps
-                        del ref_logps
+                        
                     else:
                         logger.debug("Code reward std <= 0.1, skipping GRPO process")
     
@@ -330,9 +308,9 @@ class GRPOTrainer:
             logger.debug(f"Reasoning rewards: {reasoning_rewards}")
     
             # 3. 更新代码模型
-            code_losses = []
-            code_update_success = True
-    
+            
+            
+            self.code_optimizer.zero_grad()
             if code_batches:
                 logger.info("Starting code model update")
                 self.code_agent.model.train()
@@ -340,37 +318,18 @@ class GRPOTrainer:
                 for batch in code_batches:
                     try:
                         loss = GRPO_step(
-                            self.code_agent.model, self.ref_code,
+                            self.code_agent.model, 
                             self.code_agent.tokenizer, batch, beta=beta
                         )
                         if not torch.isnan(loss) and not torch.isinf(loss):
-                            code_losses.append(loss)
+                            (loss/n_reasoning).backward()
                     except Exception as e:
-                        logger.error(f"Error computing code loss: {e}")
+                        
+                
+            code_loss = torch.tensor(0.0, device=self.code_device, requires_grad=True)
+                
     
-                if code_losses:
-                    self.code_optimizer.zero_grad()
-                    total_code_loss = sum(code_losses) / len(code_losses)
-                    total_code_loss.backward()
-    
-                    if True:  # 梯度检查逻辑被跳过
-                        print("梯度")
-                        torch.nn.utils.clip_grad_norm_(self.code_agent.model.parameters(), max_norm=0.0001)
-                        self.code_optimizer.step()
-    
-                        if not self._check_model_parameters(self.code_agent.model, "code model"):
-                            logger.error("Code model parameters contain inf/nan after update, rolling back")
-                            self.code_agent.model.load_state_dict(code_state_backup)
-                            code_update_success = False
-                        else:
-                            logger.debug(f"Code model updated successfully with loss: {total_code_loss:.6f}")
-                    else:
-                        logger.error("Code model gradients contain extreme values, skipping update")
-                        code_update_success = False
-    
-                    del total_code_loss
-    
-                del code_batches, code_losses
+               
                 if hasattr(torch.cuda, 'empty_cache'):
                     torch.cuda.empty_cache()
             else:
@@ -378,7 +337,6 @@ class GRPOTrainer:
     
             # 4. 更新推理模型
             reasoning_loss = None
-            reasoning_update_success = True
             logger.debug(f"Reasoning rewards: {reasoning_rewards}")
     
             if reasoning_rewards:
@@ -393,45 +351,23 @@ class GRPOTrainer:
     
                     if reasoning_rewards_tensor.numel() > 1:
                         try:
-                            reasoning_ref_logps = self.get_ref_logps(
-                                self.ref_reasoning, self.reasoning_agent.tokenizer,
-                                reasoning_sequences, reasoning_prompt_tokens, self.reasoning_device
-                            )
+                            
     
                             reasoning_batch = {
                                 'plen': reasoning_prompt_tokens,
                                 'inputs': reasoning_sequences,
                                 'rewards': reasoning_rewards_tensor,
-                                'refs': reasoning_ref_logps,
+                                
                                 'gen_logps': reasoning_gen_logps
                             }
-    
-                            self.reasoning_agent.model.train()
-                            self.reasoning_optimizer.zero_grad()
+
     
                             reasoning_loss = GRPO_step(
-                                self.reasoning_agent.model, self.ref_reasoning,
+                                self.reasoning_agent.model, 
                                 self.reasoning_agent.tokenizer, reasoning_batch, beta=beta
                             )
     
-                            if reasoning_loss:
-                                reasoning_loss.backward()
-    
-                                if True:
-                                    torch.nn.utils.clip_grad_norm_(self.reasoning_agent.model.parameters(), max_norm=0.0001)
-                                    self.reasoning_optimizer.step()
-    
-                                    if not self._check_model_parameters(self.reasoning_agent.model, "reasoning model"):
-                                        logger.error("Reasoning model parameters contain inf/nan after update, rolling back")
-                                        self.reasoning_agent.model.load_state_dict(reasoning_state_backup)
-                                        reasoning_update_success = False
-                                    else:
-                                        logger.debug(f"Reasoning model updated successfully with loss: {reasoning_loss:.6f}")
-                                else:
-                                    logger.error("Reasoning model gradients contain extreme values, skipping update")
-                                    reasoning_update_success = False
-    
-                            del reasoning_rewards_tensor, reasoning_ref_logps, reasoning_batch
+                            
     
                         except Exception as e:
                             logger.error(f"Error computing reasoning loss: {e}")
@@ -449,7 +385,7 @@ class GRPOTrainer:
             logger.info(f"Training step completed - Code update: {'Success' if code_update_success else 'Failed'}, "
                         f"Reasoning update: {'Success' if reasoning_update_success else 'Failed'}")
     
-            return 0, 0, history
+            return reasoning_loss, code_loss, history
     
         except Exception as e:
             logger.error(f"Error in run_step: {e}")
@@ -622,21 +558,23 @@ def load_jsonl(path):
         logger.error(f"Failed to load JSONL file {path}: {e}")
         raise
 
-def run_training(reasoning_model_path, code_model_path, jsonl_path, save_every, resume_step=None):
-    """单进程训练主函数"""
+def run_training(reasoning_model_path, code_model_path, jsonl_path, save_every_update, resume_step=None):
+    """单进程训练主函数，code每步更新一次，reasoning每10步更新一次，按更新次数存ckpt"""
     try:
         trainer = GRPOTrainer(reasoning_model_path, code_model_path)
         
-        # 如果指定了恢复步骤，加载检查点
-        start_step = 0
+        # 恢复进度
+        reasoning_update_count = 0
         if resume_step is not None and resume_step > 0:
             trainer.load_checkpoint(resume_step, reasoning_model_path, code_model_path)
-            start_step = resume_step
-            logger.info(f"Resuming from step {start_step}")
-        
-        total_step = start_step
-        
-        # 加载所有题目
+            reasoning_update_count = resume_step
+            logger.info(f"Resuming from reasoning update {reasoning_update_count}")
+
+        # Reasoning梯度累积的步数
+        reasoning_accum_steps = 10
+        reasoning_step_counter = 0
+
+        # 加载数据
         questions = load_jsonl(jsonl_path)
 
         for q_idx, item in enumerate(questions):
@@ -645,37 +583,48 @@ def run_training(reasoning_model_path, code_model_path, jsonl_path, save_every, 
             logger.info(f"Starting Q{q_idx} prompt: {global_history[:50]}...")
             truth = item.get("mid_truth", "")
 
-            # 流式强化学习直到 </answer> 结尾
-            for step in range(5):  # 最多 50 次 RL 步
+            for step in range(3):  # 最多 3 步
                 try:
-                    # 运行一步训练
-                    code_loss, reasoning_loss, global_history = trainer.run_step(
-                        global_history, truth
+                    # run_step 内部已经采样了 8 次 reasoning，并生成了 code_loss_list
+                    # code_loss_list: list of losses (1 per reasoning sample)
+                    code_loss, reasoning_loss, global_history = trainer.run_step(global_history, truth)
+
+                    # 1️⃣ Code 部分 —— 累积梯度到一次 step
+                    trainer.code_optimizer.step()       # 一次性更新 code 模型参数
+                    trainer.code_optimizer.zero_grad()
+                    # 2️⃣ Reasoning 部分 —— 梯度累积，每10步更新一次
+                    (reasoning_loss / reasoning_accum_steps).backward()
+                    reasoning_step_counter += 1
+
+                    if reasoning_step_counter % reasoning_accum_steps == 0:
+                        trainer.reasoning_optimizer.step()
+                        trainer.reasoning_optimizer.zero_grad()
+                        reasoning_update_count += 1
+                        logger.info(f"Reasoning updated {reasoning_update_count} times.")
+
+                        # 保存 checkpoint
+                        if reasoning_update_count % save_every_update == 0:
+                            trainer.save_checkpoint(reasoning_update_count, reasoning_model_path, code_model_path)
+
+                    logger.info(
+                        f"Q{q_idx} Step {step} "
+                        f"Loss_R={reasoning_loss.item():.4f} "
+                        f"Loss_C={[round(l.item(), 4) for l in code_loss_list]}"
                     )
-                    print(5.5)
-                    logger.info(f"Q{q_idx} Step {step} Loss_R={reasoning_loss} Loss_C={code_loss}")
-                    print(6)
-                    total_step += 1
-                    print(7)
-                    # 检查是否结束
-                    print(global_history)
+
                     if global_history.strip().endswith("</answer>"):
                         logger.info(f"Q{q_idx} finished (</answer> detected).")
                         break
-                    print(8)
+
                 except Exception as e:
                     logger.error(f"Error in Q{q_idx} Step {step}: {e}")
                     break
 
-            # 保存检查点
-            if (total_step+1) % save_every == 0:
-                trainer.save_checkpoint(total_step, reasoning_model_path, code_model_path)
+        logger.info(f"Training completed. Reasoning updates: {reasoning_update_count}")
 
-        logger.info(f"Training completed. Total steps: {total_step}")
-        
-        # 保存最终检查点
-        trainer.save_checkpoint(total_step, reasoning_model_path, code_model_path)
-        
+        # 最终保存
+        trainer.save_checkpoint(reasoning_update_count, reasoning_model_path, code_model_path)
+
     except Exception as e:
         logger.error(f"Critical error in training: {e}")
         raise
