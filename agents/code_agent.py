@@ -7,37 +7,28 @@ import logging
 # 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-SYSTEM_PROMPT_C = """You are a Python code generator.
-Generate the code to solve the last reasoning step of input.
-
-Rules:
-- start with <think>,put your thinking in <think>...</think>
-- output only executable python code after tinking ,wrap it in <code>...</code>
-- the result or the code need to be printed
-
-Example input:
-What is 123 + 456, then multiply by 2?First, let's compute 123 + 456.<code>
-
-Your generation format:
-<think> assign 123 to a, assign 456 to b, sum a and b, then print it.</think>
-<code>
-a=123
-b=456
-sum=a+b
-print(sum)
-</code>
-
-Follow this format exactly. Output nothing else."""
+SYSTEM_PROMPT_C = """Generate Python code to solve the problem.The code must print the result.
+"""
 
 class KeywordStoppingCriteria(StoppingCriteria):
     def __init__(self, tokenizer, keywords, start_length):
         self.tokenizer = tokenizer
-        self.keywords = keywords
         self.start_length = start_length
+        # 将传进来的字符串编译成正则对象
+        self.patterns = [re.compile(p) for p in keywords]
 
-    def __call__(self, input_ids, scores, **kwargs) -> bool:
-        decoded = self.tokenizer.decode(input_ids[0][self.start_length:], skip_special_tokens=False)
-        return any(kw in decoded for kw in self.keywords)
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        # 解码新增部分
+        decoded = self.tokenizer.decode(
+            input_ids[0][self.start_length:], 
+            skip_special_tokens=False
+        )
+        
+        # 逐个模式匹配
+        for pat in self.patterns:
+            if pat.search(decoded):
+                return True
+        return False
 
 class CodeAgent:
     def __init__(self, model_path, device="cuda", dtype=torch.float16):
@@ -98,8 +89,8 @@ class CodeAgent:
             
             # 停止条件：遇到 "</code>"
             stopping_criteria = StoppingCriteriaList([
-                KeywordStoppingCriteria(self.tokenizer, ["</code>"], input_len)
-            ])
+                                            KeywordStoppingCriteria(tok, keywords=[r"```python\s*([\s\S]*?)```"], start_length=start_len)
+                                        ])
             
             all_generated_texts = []
             all_gen_logps_list = []
@@ -186,7 +177,7 @@ class CodeAgent:
                 while len(all_generated_texts) < n_samples:
                     all_generated_texts.append("print(0)")
                     all_gen_logps_list.append(torch.zeros(3, device=self.device))
-                    default_tokens = self.tokenizer.encode("print(0)", return_tensors="pt").to(self.device)
+                    default_tokens = self.tokenizer.encode("print(", return_tensors="pt").to(self.device)
                     default_sequence = torch.cat([inputs["input_ids"], default_tokens], dim=1).squeeze(0)
                     all_sequences_list.append(default_sequence)
             
