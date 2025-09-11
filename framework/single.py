@@ -685,8 +685,6 @@ def run_training(reasoning_model_path, code_model_path, jsonl_path, save_every_u
                        
                     )
 
-                    if history==
-
                 except Exception as e:
                     logger.error(f"Error in Q{q_idx} Step {step}: {e}")
                     break
