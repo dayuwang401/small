@@ -19,7 +19,27 @@ import random
 import requests
 
 SANDBOX_URL = "http://localhost:8080/run_code"
-
+def extract_boxed_content(text):
+    results = []
+    i = 0
+    while i < len(text):
+        # 查找 \boxed{
+        if text[i:i+6] == r'boxed{':
+            i += 6
+            brace_count = 1
+            start = i
+            while i < len(text) and brace_count > 0:
+                if text[i] == '{':
+                    brace_count += 1
+                elif text[i] == '}':
+                    brace_count -= 1
+                i += 1
+            # 去掉最外层的 {} 对
+            content = text[start:i-1]
+            results.append(content)
+        else:
+            i += 1
+    return results
 # 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -50,7 +70,7 @@ def reward_code_execution(code_str, ground_truth_list,return_result=False):
     返回:
         float: 奖励分数 (1.0 = 正确, 0.2 = 成功但不正确, 0.0 = 失败)
     """
-    output = run_code_in_sandbox(code_str)
+    output = run_code_in_sand(code_str)
     if return_result:
         if output:
             return output
@@ -265,16 +285,21 @@ class GRPOTrainer:
             reasoning_code_map = []
             best_reasoning_result = None
     
-            if any("boxed" in text for text in reasoning_texts):
-                logger.info("Answer found in reasoning texts, stopping")
-                return torch.tensor(0.0, device=self.reasoning_device, requires_grad=True), torch.tensor(0.0, device=self.code_device, requires_grad=True), "boxed"
+            # if any("boxed" in text for text in reasoning_texts):
+            #     logger.info("Answer found in reasoning texts, stopping")
+            #     return torch.tensor(0.0, device=self.reasoning_device, requires_grad=True), torch.tensor(0.0, device=self.code_device, requires_grad=True), "boxed"
     
             # 2. 对每个推理生成代码样本
             logger.debug(f"Processing {len(reasoning_texts)} reasoning texts")
             for i, r_text in enumerate(reasoning_texts):
                 try:
                     logger.debug(f"Processing reasoning sample {i+1}/{len(reasoning_texts)}")
-    
+                    if "boxed" in r_text:
+                        if extract_boxed_content(r_text) in turth:
+                            reasoning_rewards.append(1)
+                        else:
+                            reasoning_rewards.append(0)
+                        continue
                     r_text_clean = re.sub(r"```python", "", r_text, flags=re.DOTALL)
                     code_prompt = self.code_agent.build_prompt(r_text_clean)
                     code_texts, code_gen_logps, code_sequences = self.sample_codes(code_prompt, n_code)
@@ -357,8 +382,10 @@ class GRPOTrainer:
                     logger.error(f"Error processing reasoning {i}: {e}")
                     reasoning_rewards.append(0.0)
                     reasoning_code_map.append((r_text, [("print(", 0.0)]))
-    
-            history = history + best_reasoning_result['reasoning_text'] + "```\n```output```\n" + best_reasoning_result['best_code_result'] + "\n```"
+            if any("boxed" in text for text in reasoning_texts):
+                history="boxed"
+            else:
+                history = history + best_reasoning_result['reasoning_text'] + "```\n```output```\n" + best_reasoning_result['best_code_result'] + "\n```"
             
             logger.debug(f"Updated history length: {len(history)}")
             logger.debug(f"Reasoning rewards: {reasoning_rewards}")
@@ -632,7 +659,7 @@ def run_training(reasoning_model_path, code_model_path, jsonl_path, save_every_u
                     # run_step 内部已经采样了 8 次 reasoning，并生成了 code_loss_list
                     # code_loss_list: list of losses (1 per reasoning sample)
                     code_loss, reasoning_loss, global_history = trainer.run_step(global_history, truth)
-
+                    
                     # 1️⃣ Code 部分 —— 累积梯度到一次 step
                     trainer.code_optimizer.step()       # 一次性更新 code 模型参数
                     trainer.code_optimizer.zero_grad()
@@ -656,9 +683,7 @@ def run_training(reasoning_model_path, code_model_path, jsonl_path, save_every_u
                        
                     )
 
-                    if global_history.strip().endswith("</answer>"):
-                        logger.info(f"Q{q_idx} finished (</answer> detected).")
-                        break
+                    if history==
 
                 except Exception as e:
                     logger.error(f"Error in Q{q_idx} Step {step}: {e}")
