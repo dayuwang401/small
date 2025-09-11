@@ -333,6 +333,7 @@ class GRPOTrainer:
                     reasoning_rewards.append(rewards_code.mean().item())
     
                     # 检查代码reward标准差是否大于0.1
+                    print("rewards_code.std() ")
                     if rewards_code.std() > 0.1:
                         logger.debug("Code reward std > 0.1, entering GRPO process")
     
@@ -426,7 +427,7 @@ class GRPOTrainer:
     
             if reasoning_rewards:
                 reasoning_rewards_tensor = torch.tensor(reasoning_rewards, device=self.reasoning_device)
-    
+                print("reasoning_rewards_tensor.std()")
                 if reasoning_rewards_tensor.std() > 0.1:
                     logger.info("Reasoning reward std > 0.1, entering GRPO process")
                     logger.debug("Starting reasoning model update")
