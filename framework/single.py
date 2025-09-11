@@ -78,19 +78,24 @@ def reward_code_execution(code_str, ground_truth_list,return_result=False):
             return output
         else:
             return "```"
-    print("code",code_str)
+    
     
     # 如果运行失败
     if output is False:
+        print(code_str)
         print("reward",0)
         return 0.0
 
     # 正确匹配 ground truth
     if output in ground_truth_list:
-        print("reward",1.0)
+        print(code_str)
+        print("output",output)
+        print("reward",0)
         return 1.0
 
     # 成功执行但结果不在正确集合中
+    print(code_str)
+    print("output",output)
     print("reward",0.2)
     return 0.2
 
