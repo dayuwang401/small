@@ -142,7 +142,7 @@ def get_per_token_logps(logits, input_ids, clamp_min=-5.0, clamp_max=0.0):
     
     return per_token_logps
 
-def GRPO_step(model, tokenizer, batch, beta=0.001, clip_param=0.2):
+def GRPO_step(model, tokenizer, batch, clip_param=0.2):
     """GRPO训练步骤"""
     print("开始grpo loss计算")
     prompt_length = batch['plen']
@@ -265,7 +265,7 @@ class GRPOTrainer:
 
     
         
-    def run_step(self, history, truth, n_reasoning=6, n_code=6, beta=0):
+    def run_step(self, history, truth, n_reasoning=6, n_code=6, ):
         """运行一步训练"""
         logger.info("Starting training step")
     
@@ -409,7 +409,7 @@ class GRPOTrainer:
                     try:
                         loss = GRPO_step(
                             self.code_agent.model, 
-                            self.code_agent.tokenizer, batch, beta=beta
+                            self.code_agent.tokenizer, batch
                         )
                         if not torch.isnan(loss) and not torch.isinf(loss):
                             (loss/n_reasoning).backward()
@@ -445,7 +445,7 @@ class GRPOTrainer:
                             }
                             reasoning_loss = GRPO_step(
                                 self.reasoning_agent.model, 
-                                self.reasoning_agent.tokenizer, reasoning_batch, beta=beta
+                                self.reasoning_agent.tokenizer, reasoning_batch
                             )
                         except Exception as e:
                             logger.error(f"Error computing reasoning loss: {e}")
