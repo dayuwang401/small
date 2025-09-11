@@ -325,17 +325,11 @@ class GRPOTrainer:
                             (loss/n_reasoning).backward()
                     except Exception as e:
                         code_loss = torch.tensor(0.0, device=self.code_device, requires_grad=True)
-                        
-                
-            code_loss = torch.tensor(0.0, device=self.code_device, requires_grad=True)
-                
-    
-               
-                if hasattr(torch.cuda, 'empty_cache'):
-                    torch.cuda.empty_cache()
             else:
                 logger.debug("No code batches with std > 0.1, skipping code model update")
-    
+            if hasattr(torch.cuda, 'empty_cache'):
+                    torch.cuda.empty_cache()
+            code_loss = torch.tensor(0.0, device=self.code_device, requires_grad=True)
             # 4. 更新推理模型
             reasoning_loss = None
             logger.debug(f"Reasoning rewards: {reasoning_rewards}")
@@ -352,8 +346,6 @@ class GRPOTrainer:
     
                     if reasoning_rewards_tensor.numel() > 1:
                         try:
-                            
-    
                             reasoning_batch = {
                                 'plen': reasoning_prompt_tokens,
                                 'inputs': reasoning_sequences,
@@ -361,15 +353,10 @@ class GRPOTrainer:
                                 
                                 'gen_logps': reasoning_gen_logps
                             }
-
-    
                             reasoning_loss = GRPO_step(
                                 self.reasoning_agent.model, 
                                 self.reasoning_agent.tokenizer, reasoning_batch, beta=beta
                             )
-    
-                            
-    
                         except Exception as e:
                             logger.error(f"Error computing reasoning loss: {e}")
                             del reasoning_rewards_tensor
