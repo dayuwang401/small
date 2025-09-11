@@ -14,10 +14,63 @@ import argparse
 import json
 import gc
 import logging
+import re
+import random
+import requests
+
+SANDBOX_URL = "http://localhost:8080/run_code"
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+def run_code_in_sandbox(code_str):
+    """执行 Python 代码并返回 stdout 或错误"""
+    try:
+        resp = requests.post(SANDBOX_URL, json={"code": code_str, "language": "python"}, timeout=20)
+    except Exception as e:
+        return False
+    try:
+        res = resp.json()
+        # print(res)  # 可调试返回结果
+    except Exception as e:
+        return False
+    
+    if res.get("status") == "Success":
+        return res["run_result"]["stdout"].strip()
+    else:
+        return False
+def reward_code_execution(code_str, ground_truth_list,return_result=False):
+    """
+    执行代码并根据输出和ground truth匹配程度给奖励。
+    
+    参数:
+        code_str (str): 待执行的Python代码
+        ground_truth_list (list[str]): 正确输出的可能值列表（按字符串精确匹配）
+    
+    返回:
+        float: 奖励分数 (1.0 = 正确, 0.2 = 成功但不正确, 0.0 = 失败)
+    """
+    output = run_code_in_sandbox(code_str)
+    if return_result:
+        if output:
+            return output
+        else:
+            return "```"
+    print("code",code_str)
+    
+    # 如果运行失败
+    if output is False:
+        print("reward",0)
+        return 0.0
+
+    # 正确匹配 ground truth
+    if output in ground_truth_list:
+        print("reward",1.0)
+        return 1.0
+
+    # 成功执行但结果不在正确集合中
+    print("reward",0.2)
+    return 0.2
 
 def extract_last_code_block(text):
     """提取最后一个的内容（保留换行）"""
