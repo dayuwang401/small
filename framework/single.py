@@ -3,9 +3,11 @@
 import torch
 import torch.multiprocessing as mp
 from torch import optim
+sys.path.insert(0, "/root/cache/small")
+
 from agents.reasoning_agent import ReasoningAgent
 from agents.code_agent import CodeAgent
-from reward import reward_code_execution
+
 from trainer import Trainer
 import os
 import re
