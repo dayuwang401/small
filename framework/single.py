@@ -72,7 +72,7 @@ def reward_code_execution(code_str, ground_truth_list,return_result=False):
     返回:
         float: 奖励分数 (1.0 = 正确, 0.2 = 成功但不正确, 0.0 = 失败)
     """
-    output = run_code_in_sandox(code_str)
+    output = run_code_in_sandbox(code_str)
     if return_result:
         if output:
             return output
@@ -297,7 +297,7 @@ class GRPOTrainer:
                 try:
                     logger.debug(f"Processing reasoning sample {i+1}/{len(reasoning_texts)}")
                     if "boxed" in r_text:
-                        if extract_boxed_content(r_text) in turth:
+                        if extract_boxed_content(r_text) in truth:
                             reasoning_rewards.append(1)
                         else:
                             reasoning_rewards.append(0)
