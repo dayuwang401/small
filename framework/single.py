@@ -324,6 +324,7 @@ class GRPOTrainer:
                         if not torch.isnan(loss) and not torch.isinf(loss):
                             (loss/n_reasoning).backward()
                     except Exception as e:
+                        code_loss = torch.tensor(0.0, device=self.code_device, requires_grad=True)
                         
                 
             code_loss = torch.tensor(0.0, device=self.code_device, requires_grad=True)
