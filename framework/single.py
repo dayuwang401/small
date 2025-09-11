@@ -238,7 +238,7 @@ class GRPOTrainer:
 
     
         
-    def run_step(self, history, truth, n_reasoning=8, n_code=6, beta=0):
+    def run_step(self, history, truth, n_reasoning=6, n_code=6, beta=0):
         """运行一步训练"""
         logger.info("Starting training step")
     
@@ -265,9 +265,9 @@ class GRPOTrainer:
             reasoning_code_map = []
             best_reasoning_result = None
     
-            # if any("boxed" in text for text in reasoning_texts):
-            #     logger.info("Answer found in reasoning texts, stopping")
-            #     return torch.tensor(0.0, device=self.reasoning_device, requires_grad=True), torch.tensor(0.0, device=self.code_device, requires_grad=True), "boxed"
+            if any("boxed" in text for text in reasoning_texts):
+                logger.info("Answer found in reasoning texts, stopping")
+                return torch.tensor(0.0, device=self.reasoning_device, requires_grad=True), torch.tensor(0.0, device=self.code_device, requires_grad=True), "boxed"
     
             # 2. 对每个推理生成代码样本
             logger.debug(f"Processing {len(reasoning_texts)} reasoning texts")
