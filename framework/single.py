@@ -455,8 +455,7 @@ class GRPOTrainer:
     
             torch.cuda.empty_cache()
     
-            logger.info(f"Training step completed - Code update: {'Success' if code_update_success else 'Failed'}, "
-                        f"Reasoning update: {'Success' if reasoning_update_success else 'Failed'}")
+            
     
             return reasoning_loss, code_loss, history
     
