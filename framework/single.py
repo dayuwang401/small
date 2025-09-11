@@ -597,7 +597,7 @@ def run_training(reasoning_model_path, code_model_path, jsonl_path, save_every_u
                     logger.info(
                         f"Q{q_idx} Step {step} "
                         f"Loss_R={reasoning_loss.item():.4f} "
-                        f"Loss_C={[round(l.item(), 4) for l in code_loss_list]}"
+                       
                     )
 
                     if global_history.strip().endswith("</answer>"):
