@@ -173,7 +173,7 @@ def GRPO_step(model, tokenizer, batch, beta=0.001, clip_param=0.2):
     else: 
         per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * advantages
     
-    per_token_loss = -(per_token_loss - beta * per_token_kl)
+   
     loss = ((per_token_loss * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)).mean()
     print("结束grpo loss计算")
     return loss
