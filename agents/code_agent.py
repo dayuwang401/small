@@ -50,7 +50,7 @@ class CodeAgent:
         self.tokenizer, self.model = self._load_model(self.model_path, self.device, self.dtype)
 
     def build_prompt(self, reasoning_text):
-        return f"{SYSTEM_PROMPT_C}\n\nfinal reason step:\n{reasoning_text}\n\nWrite Python code below:\n"
+        return f"{reasoning_text}\n{SYSTEM_PROMPT_C}"
 
 
 
