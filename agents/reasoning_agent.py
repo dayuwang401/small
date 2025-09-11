@@ -79,7 +79,7 @@ class ReasoningAgent:
             logger.debug(f"Input length: {input_len} tokens")
             
             stopping_criteria = StoppingCriteriaList([
-                    KeywordStoppingCriteria(self.tokenizer, keywords=[ r"```python"], start_length=start_len)
+                    KeywordStoppingCriteria(self.tokenizer, keywords=[ r"```python"], start_length=input_len)
                 ])
             logger.debug("Stopping criteria initialized")
             
