@@ -219,7 +219,7 @@ class GRPOTrainer:
                 try:
                     logger.debug(f"Processing reasoning sample {i+1}/{len(reasoning_texts)}")
     
-                    r_text_clean = re.sub(r"<code>.*?</code>", "", r_text, flags=re.DOTALL)
+                    r_text_clean = re.sub(r"```python", "", r_text, flags=re.DOTALL)
                     code_prompt = self.code_agent.build_prompt(r_text_clean)
                     code_texts, code_gen_logps, code_sequences = self.sample_codes(code_prompt, n_code)
     
@@ -300,10 +300,10 @@ class GRPOTrainer:
                 except Exception as e:
                     logger.error(f"Error processing reasoning {i}: {e}")
                     reasoning_rewards.append(0.0)
-                    reasoning_code_map.append((r_text, [("print(0)", 0.0)]))
+                    reasoning_code_map.append((r_text, [("print(", 0.0)]))
     
-            history = history + best_reasoning_result['reasoning_text'] + "<result>" + best_reasoning_result['best_code_result'] + "</result>"
-            history = history.replace("<code>", "")
+            history = history + best_reasoning_result['reasoning_text'] + "```\n```output```\n" + best_reasoning_result['best_code_result'] + "\n```"
+            
             logger.debug(f"Updated history length: {len(history)}")
             logger.debug(f"Reasoning rewards: {reasoning_rewards}")
     
