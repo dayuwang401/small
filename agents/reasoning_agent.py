@@ -6,7 +6,7 @@ import re
 # 设置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-SYSTEM_PROMPT_R = """Please integrate natural language reasoning with programs to solve the problem above, and put your final answer within \boxed{}
+SYSTEM_PROMPT_R = """Please integrate natural language reasoning with programs to solve the problem, and put your final answer within \boxed{}
 """ 
 
 
