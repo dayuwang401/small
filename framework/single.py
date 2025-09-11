@@ -72,7 +72,7 @@ def reward_code_execution(code_str, ground_truth_list,return_result=False):
     返回:
         float: 奖励分数 (1.0 = 正确, 0.2 = 成功但不正确, 0.0 = 失败)
     """
-    output = run_code_in_sand(code_str)
+    output = run_code_in_sandox(code_str)
     if return_result:
         if output:
             return output
