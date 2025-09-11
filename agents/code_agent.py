@@ -89,7 +89,7 @@ class CodeAgent:
             
             # 停止条件：遇到 "</code>"
             stopping_criteria = StoppingCriteriaList([
-                                            KeywordStoppingCriteria(self.tokenizer, keywords=[r"```python\s*([\s\S]*?)```"], start_length=start_len)
+                                            KeywordStoppingCriteria(self.tokenizer, keywords=[r"```python\s*([\s\S]*?)```"], start_length=input_len)
                                         ])
             
             all_generated_texts = []
