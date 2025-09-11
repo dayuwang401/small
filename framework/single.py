@@ -20,8 +20,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def extract_last_code_block(text):
-    matches = re.findall(r"<code>(.*?)</code>", text, re.S)
-    return matches[-1] if matches else "print(0)"
+    """提取最后一个的内容（保留换行）"""
+    matches = re.findall(r"```python\s*([\s\S]*?)```", text, re.DOTALL)
+    if matches:
+        return matches[-1]  # 取最后一个
+    return "print("
 
 def get_per_token_logps(logits, input_ids, clamp_min=-5.0, clamp_max=0.0):
     """
@@ -112,13 +115,13 @@ class GRPOTrainer:
         # 初始化模型
         try:
             # 推理模型及其副本
-            self.base_reasoning_model = ReasoningAgent(reasoning_model_path, device=self.reasoning_device, dtype=torch.float16).model
-            self.reasoning_agent = ReasoningAgent(reasoning_model_path, device=self.reasoning_device, dtype=torch.float16)
+            self.base_reasoning_model = ReasoningAgent(reasoning_model_path, device=self.reasoning_device, dtype=torch.float32).model
+            self.reasoning_agent = ReasoningAgent(reasoning_model_path, device=self.reasoning_device, dtype=torch.float32)
             self.reasoning_agent.model = copy.deepcopy(self.base_reasoning_model)
 
             # 代码模型及其副本
-            self.base_code_model = CodeAgent(code_model_path, device=self.code_device, dtype=torch.float16).model
-            self.code_agent = CodeAgent(code_model_path, device=self.code_device, dtype=torch.float16)
+            self.base_code_model = CodeAgent(code_model_path, device=self.code_device, dtype=torch.float32).model
+            self.code_agent = CodeAgent(code_model_path, device=self.code_device, dtype=torch.float32)
             self.code_agent.model = copy.deepcopy(self.base_code_model)
             
             logger.info("Models initialized successfully")
@@ -142,7 +145,7 @@ class GRPOTrainer:
     
 
 
-    def sample_reasonings(self, prompt, n_samples, max_tokens=1024):
+    def sample_reasonings(self, prompt, n_samples, max_tokens=2048):
         """采样推理文本"""
         print("采样推理文本")
         try:
@@ -209,9 +212,9 @@ class GRPOTrainer:
             reasoning_code_map = []
             best_reasoning_result = None
     
-            if any("boxed" in text for text in reasoning_texts):
-                logger.info("Answer found in reasoning texts, stopping")
-                return torch.tensor(0.0, device=self.reasoning_device, requires_grad=True), torch.tensor(0.0, device=self.code_device, requires_grad=True), "boxed"
+            # if any("boxed" in text for text in reasoning_texts):
+            #     logger.info("Answer found in reasoning texts, stopping")
+            #     return torch.tensor(0.0, device=self.reasoning_device, requires_grad=True), torch.tensor(0.0, device=self.code_device, requires_grad=True), "boxed"
     
             # 2. 对每个推理生成代码样本
             logger.debug(f"Processing {len(reasoning_texts)} reasoning texts")
@@ -569,7 +572,7 @@ def run_training(reasoning_model_path, code_model_path, jsonl_path, save_every_u
             question = item.get("question", "")
             global_history = question
             logger.info(f"Starting Q{q_idx} prompt: {global_history[:50]}...")
-            truth = item.get("mid_truth", "")
+            truth = item.get("mid_ground_truth", "")
 
             for step in range(3):  # 最多 3 步
                 try:
