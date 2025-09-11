@@ -426,7 +426,7 @@ class GRPOTrainer:
             logger.debug(f"Reasoning rewards: {reasoning_rewards}")
     
             if reasoning_rewards:
-                reasoning_rewards_tensor = torch.tensor(reasoning_rewards, device=self.reasoning_device)
+                reasoning_rewards_tensor = torch.tensor(reasoning_rewards,dtype=torch.float32, device=self.reasoning_device)
                 print("reasoning_rewards_tensor.std()")
                 if reasoning_rewards_tensor.std() > 0.1:
                     logger.info("Reasoning reward std > 0.1, entering GRPO process")
