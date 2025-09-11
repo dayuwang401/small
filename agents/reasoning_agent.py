@@ -7,8 +7,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 SYSTEM_PROMPT_R = """Please integrate natural language reasoning with programs to solve the problem above, and put your final answer within \boxed{}
-every time you generate ```python, the enviroment will generate the python code and insert the output of code. if an error occur,redescribe the reasoning step
 """ 
+
 
 USER_PROMPT_TEMPLATE = """Problem:
 {question}
@@ -17,12 +17,22 @@ USER_PROMPT_TEMPLATE = """Problem:
 class KeywordStoppingCriteria(StoppingCriteria):
     def __init__(self, tokenizer, keywords, start_length):
         self.tokenizer = tokenizer
-        self.keywords = keywords
         self.start_length = start_length
+        # 将传进来的字符串编译成正则对象
+        self.patterns = [re.compile(p) for p in keywords]
 
-    def __call__(self, input_ids, scores, **kwargs) -> bool:
-        decoded = self.tokenizer.decode(input_ids[0][self.start_length:], skip_special_tokens=False)
-        return any(kw in decoded for kw in self.keywords)
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        # 解码新增部分
+        decoded = self.tokenizer.decode(
+            input_ids[0][self.start_length:], 
+            skip_special_tokens=False
+        )
+        
+        # 逐个模式匹配
+        for pat in self.patterns:
+            if pat.search(decoded):
+                return True
+        return False
 
 class ReasoningAgent:
     def __init__(self, model_path, device="cuda", dtype=torch.float16):
@@ -69,8 +79,8 @@ class ReasoningAgent:
             logger.debug(f"Input length: {input_len} tokens")
             
             stopping_criteria = StoppingCriteriaList([
-                KeywordStoppingCriteria(self.tokenizer, ["<code>", "</answer>"], input_len)
-            ])
+                    KeywordStoppingCriteria(tok, keywords=[ r"```python"], start_length=start_len)
+                ])
             logger.debug("Stopping criteria initialized")
             
             all_generated_texts = []
@@ -206,7 +216,7 @@ class ReasoningAgent:
         except Exception as e:
             logger.error(f"Critical error in text generation: {e}")
             # 返回安全的默认值
-            dummy_texts = ["Error"] * n_samples
+            dummy_texts = [""] * n_samples
             dummy_logps = torch.zeros((n_samples, 1), device=self.device)
             dummy_sequences = inputs["input_ids"].repeat(n_samples, 1) if 'inputs' in locals() else torch.zeros((n_samples, 10), dtype=torch.long, device=self.device)
             
